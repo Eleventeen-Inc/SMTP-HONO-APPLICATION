@@ -48,7 +48,7 @@ async function sendAuthEmail(to: string, subject: string, html: string) {
 }
 
 const trustedOrigins =
-    process.env.AUTH_TRUSTED_ORIGINS?.split(",").map(o => o.trim()) ?? [];
+    env.AUTH_TRUSTED_ORIGINS?.split(",").map(o => o.trim()) ?? [];
 
 const auth = betterAuth({
     database: drizzleAdapter(db, {
@@ -81,9 +81,9 @@ const auth = betterAuth({
     advanced: {
         crossSubDomainCookies: {
             enabled: true,
-            domain: process.env.AUTH_COOKIE_DOMAIN,
+            domain: env.AUTH_COOKIE_DOMAIN,
         },
-        useSecureCookies: process.env.AUTH_SECURE_COOKIES === "true",
+        useSecureCookies: env.AUTH_SECURE_COOKIES === "true",
     },
     trustedOrigins,
     socialProviders: {

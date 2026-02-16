@@ -36,6 +36,11 @@ const envSchema = z.object({
     GITHUB_CLIENT_SECRET: z.string().optional(),
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
+
+    // Auth advanced settings
+    AUTH_TRUSTED_ORIGINS: z.string().optional(),
+    AUTH_COOKIE_DOMAIN: z.string().optional(),
+    AUTH_SECURE_COOKIES: z.string().default("false"),
 });
 
 export type Env = z.infer<typeof envSchema>;
