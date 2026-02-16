@@ -47,6 +47,9 @@ async function sendAuthEmail(to: string, subject: string, html: string) {
     }
 }
 
+const trustedOrigins =
+    process.env.AUTH_TRUSTED_ORIGINS?.split(",").map(o => o.trim()) ?? [];
+
 const auth = betterAuth({
     database: drizzleAdapter(db, {
         provider: "pg",
@@ -75,24 +78,32 @@ const auth = betterAuth({
             );
         },
     },
+    advanced: {
+        crossSubDomainCookies: {
+            enabled: true,
+            domain: process.env.AUTH_COOKIE_DOMAIN,
+        },
+        useSecureCookies: process.env.AUTH_SECURE_COOKIES === "true",
+    },
+    trustedOrigins,
     socialProviders: {
         ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
             ? {
-                  github: {
-                      clientId: env.GITHUB_CLIENT_ID,
-                      clientSecret: env.GITHUB_CLIENT_SECRET,
-                      redirectURI: `${env.BETTER_AUTH_URL}/api/auth/callback/github`,
-                  },
-              }
+                github: {
+                    clientId: env.GITHUB_CLIENT_ID,
+                    clientSecret: env.GITHUB_CLIENT_SECRET,
+                    redirectURI: `${env.BETTER_AUTH_URL}/api/auth/callback/github`,
+                },
+            }
             : {}),
         ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
             ? {
-                  google: {
-                      clientId: env.GOOGLE_CLIENT_ID,
-                      clientSecret: env.GOOGLE_CLIENT_SECRET,
-                      redirectURI: `${env.BETTER_AUTH_URL}/api/auth/callback/google`,
-                  },
-              }
+                google: {
+                    clientId: env.GOOGLE_CLIENT_ID,
+                    clientSecret: env.GOOGLE_CLIENT_SECRET,
+                    redirectURI: `${env.BETTER_AUTH_URL}/api/auth/callback/google`,
+                },
+            }
             : {}),
     },
     emailVerification: {

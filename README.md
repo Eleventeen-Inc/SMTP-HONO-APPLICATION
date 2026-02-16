@@ -184,6 +184,14 @@ GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+
+# Auth Advanced Settings
+# Comma-separated list of origins allowed to make auth requests (CORS)
+AUTH_TRUSTED_ORIGINS=https://app.yourdomain.com,https://dashboard.yourdomain.com
+# Domain for cross-subdomain cookies (e.g., share sessions between api.yourdomain.com and app.yourdomain.com)
+AUTH_COOKIE_DOMAIN=yourdomain.com
+# Set to "true" in production (requires HTTPS)
+AUTH_SECURE_COOKIES=true
 ```
 
 **Key notes about `SMTP_HOST`:**
@@ -192,6 +200,12 @@ GOOGLE_CLIENT_SECRET=
 - The API container uses bridge networking, so `localhost` inside it does **not** reach the host.
 - Use `172.17.0.1` (Docker's default host gateway on Linux) or your VPS public IP to reach Postfix from the API container.
 - To find your Docker host gateway: `docker network inspect bridge | grep Gateway`
+
+**Key notes about `AUTH_*` variables:**
+
+- **`AUTH_TRUSTED_ORIGINS`** -- Comma-separated list of origins that are allowed to make authentication requests. Include every frontend domain that will interact with the API (e.g., your dashboard, your marketing site). This is required for cross-origin cookie-based auth to work.
+- **`AUTH_COOKIE_DOMAIN`** -- Enables cross-subdomain cookie sharing. Set this to your root domain (e.g., `yourdomain.com`) so that a session created on `api.yourdomain.com` is also valid on `app.yourdomain.com`. In local development, use `localhost`.
+- **`AUTH_SECURE_COOKIES`** -- Set to `true` in production (requires HTTPS). Set to `false` for local development over plain HTTP.
 
 ### 2.3 Set up the database
 
@@ -313,28 +327,42 @@ certbot --nginx -d api.yourdomain.com
 
 ### Authentication Flow
 
-1. **Sign up** -- Create an account via Better Auth
-2. **Create an organization** -- Every user needs an org (API keys and domains belong to orgs)
+1. **Sign up** -- Create an account via email/password, magic link, or a social provider (GitHub, Google)
+2. **Create an organization** -- Every user needs an org (API keys and domains belong to orgs). Credits are automatically initialized when an organization is created.
 3. **Create an API key** -- Used to authenticate API requests
 4. **Add a domain** (optional) -- Or use the shared domain for testing
+
+**Supported auth methods:** Email/password, magic link, GitHub OAuth, Google OAuth, two-factor authentication (2FA). The `lastLoginMethod` plugin tracks which method was used most recently.
 
 ### Auth Endpoints (Session/Cookie-based)
 
 These are handled by Better Auth. Use them from a frontend or with cookies:
 
 ```bash
-# Sign up
+# Sign up with email/password
 curl -X POST https://api.yourdomain.com/api/auth/sign-up/email \
   -H "Content-Type: application/json" \
   -d '{"name": "John", "email": "john@example.com", "password": "securepassword"}'
 
-# Sign in
+# Sign in with email/password
 curl -X POST https://api.yourdomain.com/api/auth/sign-in/email \
   -H "Content-Type: application/json" \
   -c cookies.txt \
   -d '{"email": "john@example.com", "password": "securepassword"}'
 
+# Sign in with magic link (sends a link to the email)
+curl -X POST https://api.yourdomain.com/api/auth/magic-link/sign-in \
+  -H "Content-Type: application/json" \
+  -d '{"email": "john@example.com"}'
+
+# Sign in with GitHub (redirect the user to this URL in the browser)
+# GET https://api.yourdomain.com/api/auth/callback/github
+
+# Sign in with Google (redirect the user to this URL in the browser)
+# GET https://api.yourdomain.com/api/auth/callback/google
+
 # Create an organization (requires session cookie)
+# Credits are automatically initialized for the new organization
 curl -X POST https://api.yourdomain.com/api/auth/organization/create \
   -H "Content-Type: application/json" \
   -b cookies.txt \
@@ -541,7 +569,7 @@ Each organization starts with **3,000 free credits per month** (1 credit = 1 ema
 | Component | Technology |
 |-----------|-----------|
 | HTTP Framework | [Hono](https://hono.dev) |
-| Authentication | [Better Auth](https://better-auth.com) (API keys, OAuth, 2FA, organizations) |
+| Authentication | [Better Auth](https://better-auth.com) (API keys, OAuth, 2FA, magic link, organizations, last login method) |
 | Database | PostgreSQL via [Drizzle ORM](https://orm.drizzle.team) + [Neon](https://neon.tech) |
 | Job Queue | [BullMQ](https://docs.bullmq.io) + Redis |
 | Email Sending | [nodemailer](https://nodemailer.com) -> Postfix (localhost:587) |
@@ -624,6 +652,10 @@ npm install
 # Copy and edit environment file
 cp .env.example .env
 # Edit .env with your values (use localhost for SMTP_HOST, etc.)
+# For local development, use these auth settings:
+#   AUTH_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:8787
+#   AUTH_COOKIE_DOMAIN=localhost
+#   AUTH_SECURE_COOKIES=false
 
 # Push database schema
 npx drizzle-kit push
