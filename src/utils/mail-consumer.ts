@@ -5,6 +5,7 @@ import { redisConnection } from "../config/redis.js";
 import { env } from "../config/env.js";
 import db from "../db/index.js";
 import { emailSent } from "../db/schema.js";
+import { logAction } from "../services/log.service.js";
 import type { EmailJobData } from "../types/index.js";
 
 /**
@@ -76,7 +77,10 @@ export const mailWorker = new Worker<EmailJobData>(
 
         // Check if this email was cancelled before processing
         const emailRows = await db
-            .select({ status: emailSent.status })
+            .select({
+                status: emailSent.status,
+                organizationId: emailSent.organizationId,
+            })
             .from(emailSent)
             .where(eq(emailSent.id, data.emailSentId))
             .limit(1);
@@ -85,6 +89,7 @@ export const mailWorker = new Worker<EmailJobData>(
             console.log(`[mail-worker] Job ${job.id} skipped: email was cancelled`);
             return { processed: false, reason: "cancelled" };
         }
+        const organizationId = emailRows[0]?.organizationId;
 
         // Update status to "sending"
         await updateEmailStatus(data.emailSentId, "sending");
@@ -108,6 +113,18 @@ export const mailWorker = new Worker<EmailJobData>(
                 providerId: info.messageId || null,
                 sentAt: new Date(),
             });
+            void logAction({
+                organizationId,
+                action: "email_sent",
+                resourceType: "email",
+                resourceId: data.emailSentId,
+                details: JSON.stringify({
+                    from: data.from,
+                    toCount: data.to.length,
+                    messageId: info.messageId || null,
+                    jobId: job.id,
+                }),
+            });
 
             console.log(`[mail-worker] Job ${job.id} sent successfully: messageId=${info.messageId}`);
 
@@ -120,6 +137,18 @@ export const mailWorker = new Worker<EmailJobData>(
             // Failure -- update status with error
             await updateEmailStatus(data.emailSentId, "failed", {
                 error: err.message || "Unknown error",
+            });
+            void logAction({
+                organizationId,
+                action: "email_failed",
+                resourceType: "email",
+                resourceId: data.emailSentId,
+                error: err.message || "Unknown error",
+                details: JSON.stringify({
+                    from: data.from,
+                    toCount: data.to.length,
+                    jobId: job.id,
+                }),
             });
 
             console.error(`[mail-worker] Job ${job.id} failed:`, err.message);

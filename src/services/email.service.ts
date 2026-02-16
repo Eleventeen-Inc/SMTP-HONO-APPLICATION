@@ -9,6 +9,7 @@ import {
     ValidationError,
 } from "../utils/errors.js";
 import { checkAndDeduct } from "./credit.service.js";
+import { logAction } from "./log.service.js";
 import { env } from "../config/env.js";
 import type { SendEmailPayload, ListEmailsParams, EmailJobData } from "../types/index.js";
 
@@ -130,13 +131,9 @@ export async function sendEmail(
         }
     }
 
-    // Check and deduct credits (1 credit per email)
+    // Create the email record first so dependent FK relations can reference it.
     const totalRecipients = allRecipients.length;
     const emailId = generateId("email");
-
-    await checkAndDeduct(orgId, totalRecipients, emailId);
-
-    // Create the email record
     const now = new Date();
     await db.insert(emailSent).values({
         id: emailId,
@@ -151,6 +148,15 @@ export async function sendEmail(
         metadata: payload.tags ? JSON.stringify(payload.tags) : null,
         createdAt: now,
     });
+
+    // Check and deduct credits (1 credit per recipient).
+    try {
+        await checkAndDeduct(orgId, totalRecipients, emailId);
+    } catch (err) {
+        // Roll back the created email row when credit deduction fails.
+        await db.delete(emailSent).where(eq(emailSent.id, emailId));
+        throw err;
+    }
 
     // Add job to BullMQ queue
     const jobData: EmailJobData = {
@@ -180,6 +186,22 @@ export async function sendEmail(
     }
 
     await mailQueue.add("send-email", jobData, jobOptions);
+
+    void logAction({
+        organizationId: orgId,
+        userId,
+        action: "email_queued",
+        resourceType: "email",
+        resourceId: emailId,
+        details: JSON.stringify({
+            from: payload.from,
+            toCount: toRecipients.length,
+            ccCount: ccRecipients.length,
+            bccCount: bccRecipients.length,
+            subject: payload.subject,
+            scheduledAt: payload.scheduledAt || null,
+        }),
+    });
 
     // Return the created email record
     return {
