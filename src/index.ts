@@ -6,25 +6,40 @@ import { env } from "./config/env.js";
 
 // Import routes
 import authRoute from "./routes/auth.route.js";
-import emailRoute from "./routes/emails.route.js";
+// import emailRoute from "./routes/emails.route.js";
 import domainRoute from "./routes/domains.route.js";
 import apiKeyRoute from "./routes/api-keys.route.js";
 
 // Import middleware
 import { requireApiKey } from "./middleware/auth.middleware.js";
-import { rateLimiter } from "./middleware/rate-limit.middleware.js";
+// import { rateLimiter } from "./middleware/rate-limit.middleware.js";
 import { requestLogger } from "./middleware/logger.middleware.js";
 import { orgContext } from "./middleware/org-context.middleware.js";
 
 // Import and start the mail worker (side-effect import)
-import "./utils/mail-consumer.js";
+// import "./utils/mail-consumer.js";
 
 const app = new Hono();
+const envCorsOrigins =
+    env.AUTH_TRUSTED_ORIGINS?.split(",").map((o) => o.trim()).filter(Boolean) ?? [];
+const devCorsOrigins =
+    env.NODE_ENV === "development" ? ["http://localhost:3000"] : [];
+const appOrigin = env.CLIENT_APP_URL ? [env.CLIENT_APP_URL] : [];
+const allowedCorsOrigins = new Set([...envCorsOrigins, ...devCorsOrigins, ...appOrigin]);
 
 // ============================================================
 // Global Middleware
 // ============================================================
-app.use("*", cors());
+app.use(
+    "*",
+    cors({
+        origin: (origin) => {
+            if (!origin) return "";
+            return allowedCorsOrigins.has(origin) ? origin : "";
+        },
+        credentials: true,
+    })
+);
 
 // ============================================================
 // Health Check (no auth required)
@@ -56,15 +71,14 @@ const api = new Hono();
 // Middleware chain for API routes:
 // 1. requireApiKey - verify the Bearer token
 // 2. orgContext    - resolve which org the request is for
-// 3. rateLimiter   - check rate limits
-// 4. requestLogger - log the request (non-blocking)
+// 3. requestLogger - log the request (non-blocking)
 api.use("*", requireApiKey);
 api.use("*", orgContext);
-api.use("*", rateLimiter);
+// api.use("*", rateLimiter);
 api.use("*", requestLogger);
 
 // Mount route handlers
-api.route("/emails", emailRoute);
+// api.route("/emails", emailRoute);
 api.route("/domains", domainRoute);
 
 app.route("/api/v1", api);

@@ -47,10 +47,17 @@ async function sendAuthEmail(to: string, subject: string, html: string) {
     }
 }
 
-const trustedOrigins =
-    env.AUTH_TRUSTED_ORIGINS?.split(",").map(o => o.trim()) ?? [];
+const envTrustedOrigins =
+    env.AUTH_TRUSTED_ORIGINS?.split(",").map((o) => o.trim()).filter(Boolean) ?? [];
+const devTrustedOrigins =
+    env.NODE_ENV === "development" ? ["http://localhost:3000"] : [];
+const appOrigin = env.CLIENT_APP_URL ? [env.CLIENT_APP_URL] : [];
+const trustedOrigins = Array.from(
+    new Set([...envTrustedOrigins, ...devTrustedOrigins, ...appOrigin])
+);
 
 const auth = betterAuth({
+    baseURL: env.BETTER_AUTH_URL,
     database: drizzleAdapter(db, {
         provider: "pg",
         schema: schema,
@@ -153,7 +160,8 @@ const auth = betterAuth({
         apiKey(),
         organization({
             async sendInvitationEmail(data) {
-                const inviteLink = `${env.BETTER_AUTH_URL}/auth/accept-invite?invitationId=${data.id}`;
+                const inviteBase = env.CLIENT_APP_URL || env.BETTER_AUTH_URL;
+                const inviteLink = `${inviteBase}/auth/accept-invite?invitationId=${data.id}`;
                 await sendAuthEmail(
                     data.email,
                     `You're Invited to Join ${data.organization.name}`,

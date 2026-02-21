@@ -4,11 +4,12 @@ import "dotenv/config";
 const envSchema = z.object({
     // App
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-    HONO_PORT: z.coerce.number().default(3000),
+    HONO_PORT: z.coerce.number().default(4000),
 
     // Auth
     BETTER_AUTH_SECRET: z.string().min(16),
     BETTER_AUTH_URL: z.string().url(),
+    CLIENT_APP_URL: z.string().url().optional(),
 
     // Database
     DATABASE_URL: z.string().min(1),
